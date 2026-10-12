@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Python Snake Lab — Learn Python Through Animation</title>
+<meta name="description" content="Write real Python, watch a snake execute your program step by step, and inspect every variable as it changes.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1428'/%3E%3Cpath d='M7 16h6a3 3 0 0 0 3-3V9h4a5 5 0 0 1 5 5v9h-6' stroke='%233ee08a' stroke-width='4' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 32 32" aria-hidden="true">
+      <rect width="32" height="32" rx="8" fill="#122240"/>
+      <path d="M7 16h6a3 3 0 0 0 3-3V9h4a5 5 0 0 1 5 5v9h-6" stroke="#3ee08a" stroke-width="4" stroke-linecap="round" fill="none"/>
+      <circle cx="22.4" cy="11.2" r="1.4" fill="#0b1428"/>
+    </svg>
+    <div class="brand-text">
+      <h1>Python Snake Lab</h1>
+      <p>Learn Python by watching your code run</p>
+    </div>
+  </div>
+  <div class="runbar">
+    <span id="status-pill" class="pill pill-loading" data-load="Loading Python...">Loading Python...</span>
+    <label class="speedwrap" title="Animation speed">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+      <input id="speed" type="range" min="1" max="10" step="0.5" value="3.5">
+    </label>
+  </div>
+</header>
+
+<div id="banner" class="banner" hidden></div>
+
+<main class="workspace">
+
+  <section class="panel" id="panel-editor" aria-label="Python code editor">
+    <div class="panel-head">
+      <h2><span class="stepnum">A</span> Code Editor</h2>
+      <div class="panel-tools">
+        <details class="examples" id="examples-pop">
+          <summary>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20" opacity="0"/><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+            Examples
+          </summary>
+          <div id="example-menu" class="menu"></div>
+        </details>
+        <button class="btn tiny ghost" id="btn-reset" title="Stop and return everything to a clean initial state">Reset</button>
+      </div>
+    </div>
+    <div id="editor-host"></div>
+    <div class="controls">
+      <button class="btn primary" id="btn-run" disabled>
+        <svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg><span>Run</span>
+      </button>
+      <button class="btn" id="btn-pause" disabled title="Freeze execution safely — even mid infinite loop">
+        <svg viewBox="0 0 24 24"><rect x="6" y="4.5" width="4.2" height="15" rx="1.2"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.2"/></svg><span>Pause</span>
+      </button>
+      <button class="btn" id="btn-resume" disabled>
+        <svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg><span>Resume</span>
+      </button>
+      <button class="btn" id="btn-step" disabled title="Execute exactly one statement, then pause">
+        <svg viewBox="0 0 24 24"><path d="M6 4.5v15l10-7.5z"/><rect x="17.5" y="4.5" width="3.2" height="15" rx="1.2"/></svg><span>Step</span>
+      </button>
+      <button class="btn danger" id="btn-stop" disabled title="End the program safely">
+        <svg viewBox="0 0 24 24"><rect x="5.5" y="5.5" width="13" height="13" rx="2.6"/></svg><span>Stop</span>
+      </button>
+    </div>
+    <p class="kbd-hint">Ctrl+Enter runs. Every loop, branch and edit runs as <em>real</em> Python (Pyodide, in a sandboxed worker).</p>
+  </section>
+
+  <section class="panel" id="panel-play" aria-label="Animated snake playground">
+    <div class="panel-head">
+      <h2><span class="stepnum">B</span> Snake Playground</h2>
+      <span id="coord-readout" class="coord mono">head (5, 5)</span>
+    </div>
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
+    </div>
+    <div id="challenge-result" class="challenge-result" hidden></div>
+    <p class="kbd-hint">The snake only moves when <em>your program</em> makes it move. Grid numbers are coordinates (x right, y down).</p>
+  </section>
+
+  <section class="panel" id="panel-inspector" aria-label="Live Python inspector and lessons">
+    <div class="tabs" role="tablist">
+      <button class="tab active" id="tab-state" data-pane="pane-state">Inspector</button>
+      <button class="tab" id="tab-insp-lessons" data-pane="pane-lessons">Lessons</button>
+    </div>
+    <div class="tabpane active" id="pane-state">
+      <h3 class="sec">Game state</h3>
+      <div id="insp-state" class="insp-state"><div class="muted">Run your program to see real values.</div></div>
+      <h3 class="sec">Variables</h3>
+      <div id="insp-vars" class="insp-vars"><div class="muted">Variables appear here after each executed line. Recent changes glow green.</div></div>
+      <div id="insp-error" class="insp-error" hidden></div>
+      <h3 class="sec">Output</h3>
+      <div id="insp-output" class="insp-output"><div class="muted">Output from print(...) appears here.</div></div>
+      <h3 class="sec">Last steps</h3>
+      <div id="insp-history" class="insp-history"><div class="muted">Step history shows what each executed line changed.</div></div>
+    </div>
+    <div class="tabpane" id="pane-lessons">
+      <div id="lesson-list"></div>
+      <div id="lesson-detail" hidden></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  Python runs in your browser via Pyodide inside a Web Worker — code never touches a server. Built for teaching: loops, lists, conditions, functions, errors, all made visible.
+</footer>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
