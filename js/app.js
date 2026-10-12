@@ -391,6 +391,7 @@ window.snakeLab = {
   getCode: () => editor && editor.getValue(),
   run: beginRun, pause, resume, step: stepOnce, stop, reset: resetBoard,
   status: () => status,
+  events: () => run.events.slice(),
   grid, inspector,
 };
 
