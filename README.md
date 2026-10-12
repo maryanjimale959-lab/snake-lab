@@ -62,6 +62,28 @@ python -m http.server 8080
 Opening `index.html` via `file://` will **not** work — Web Workers require an
 HTTP origin (GitHub Pages, `python -m http.server`, `npx serve`, etc.).
 
+## The teaching API (documented contract)
+
+These Python functions live inside the student's own namespace (the game and
+the program share one source of truth — the student's `snake` list):
+
+| Call | Effect |
+| --- | --- |
+| `move_snake()` | Moves the head exactly one cell along `direction`, updates the `snake` list in place (tuples stay tuples, lists stay lists), grows by one and `+1 score` when the head lands on `food`, then respawns food. Ends the program with a Game over only on a real collision: head outside the grid or head on its own body. |
+| `set_direction(d)` | Sets `direction` to `'up' / 'down' / 'left' / 'right'` (validated). |
+| `place_food(x, y)` / `random_food()` | Move the food. |
+| `print(...)` | Real Python stdout, shown in the Output panel. |
+
+**Coordinate-variable sync:** after a move, if `x` currently equals the old
+head x, it is updated to the new head x; likewise for `y`. So
+`while x < 8: move_snake()` terminates naturally, while an unrelated `x = 99`
+is never touched. The Inspector shows the synced values because it reads the
+live namespace, not a guess.
+
+**Loop tracking:** every `for`/`while` body records its real iteration count;
+the Inspector shows "Loop running — line N, iteration K" from actual
+executions, and ending a loop is reported as finishing, never as a crash.
+
 ## Running the tests
 
 ```bash

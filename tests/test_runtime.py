@@ -95,7 +95,7 @@ print("PASS 6: append visible to grid and inspector")
 
 # --- test 7: variables snapshot real values
 steps, _ = run_program('x = 5\ny = 2\ndirection = "up"\nsnake = [(x, y), (x - 1, y)]\nmove_snake()')
-assert steps[-1]["vars"]["x"] == "5" and steps[-1]["vars"]["y"] == "2", steps[-1]["vars"]
+assert steps[-1]["vars"]["x"] == "5" and steps[-1]["vars"]["y"] == "1", steps[-1]["vars"]  # y synced with head
 assert head(steps) == [5, 1]  # moving "up" from (5, 2) => (5, 1)
 print("PASS 7: inspector shows real namespace")
 
@@ -166,5 +166,49 @@ assert rt.map_error_line(src, phys) == 2, (src, phys)
 tick_phys = next(i + 1 for i, l in enumerate(lines) if "__tick__" in l)
 assert rt.map_error_line(src, tick_phys) == 1
 print("PASS 14: traceback lines mapped to student lines")
+
+# --- test 15: brief section 4 example exactly (tuple style + x/y sync)
+steps, _ = run_program('''
+x = 5
+y = 5
+direction = "right"
+
+snake = [(x, y), (x - 1, y), (x - 2, y)]
+
+set_direction(direction)
+move_snake()
+''')
+assert steps[-1]["vars"]["snake"] == "[(6, 5), (5, 5), (4, 5)]", steps[-1]["vars"]["snake"]
+assert steps[-1]["vars"]["x"] == "6" and steps[-1]["vars"]["y"] == "5"
+assert head(steps) == [6, 5]
+print("PASS 15: tuples preserved, coordinate vars stay in sync")
+
+# --- test 16: brief Test 5 - while x < 8 with x synced by move_snake
+steps, _ = run_program('''
+x = 5
+y = 5
+direction = "right"
+snake = [(5, 5), (4, 5), (3, 5)]
+
+while x < 8:
+    move_snake()
+''')
+mv = [e for s in steps for e in s["events"] if e["type"] == "move"]
+assert len(mv) == 3, len(mv)
+assert steps[-1]["vars"]["x"] == "8", steps[-1]["vars"]["x"]
+assert steps[-1]["gameOver"] is False
+print("PASS 16: while x < 8 ends naturally after 3 moves, x == 8")
+
+# --- test 17: real loop iteration counting
+steps, _ = run_program('snake = [(3, 5), (2, 5)]\ndirection = "right"\nfor i in range(4):\n    move_snake()')
+last = steps[-1]
+assert last["loops"] and 4 in last["loops"].values(), last["loops"]
+assert last["inner"][1] == 4, last["inner"]
+print("PASS 17: loop iterations tracked from real execution")
+
+# --- test 18: unrelated x is NOT clobbered by the sync
+steps, _ = run_program('x = 99\ndirection = "right"\nsnake = [(5, 5), (4, 5)]\nmove_snake()')
+assert steps[-1]["vars"]["x"] == "99"
+print("PASS 18: head-sync only touches x/y that track the head")
 
 print("\nALL RUNTIME TESTS PASSED")

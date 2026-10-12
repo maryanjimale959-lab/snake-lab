@@ -59,13 +59,16 @@ export class Inspector {
       }).join("") : `<div class="muted">No variables yet.</div>`;
 
       const head = snap.snake && snap.snake.length ? snap.snake[0] : null;
+      const loopRow = (snap.inner && snap.inner.length === 2)
+        ? `<div class="stat"><span class="slabel">Loop running</span><span class="sval mono">line ${snap.inner[0]} — iteration ${snap.inner[1]}</span></div>`
+        : "";
       stateEl.innerHTML = `
         <div class="stat"><span class="slabel">Direction</span><span class="sval dir-${esc(snap.direction || "right")}">${esc(snap.direction || "right")}</span></div>
         <div class="stat"><span class="slabel">Head (x, y)</span><span class="sval mono">${head ? `(${head[0]}, ${head[1]})` : "-"}</span></div>
         <div class="stat"><span class="slabel">Food</span><span class="sval mono">${snap.food ? `(${snap.food[0]}, ${snap.food[1]})` : "-"}</span></div>
         <div class="stat"><span class="slabel">Body length</span><span class="sval mono">${snap.snake ? snap.snake.length : 0}</span></div>
         <div class="stat"><span class="slabel">Score</span><span class="sval mono">${snap.score}</span></div>
-        <div class="stat"><span class="slabel">Lines executed</span><span class="sval mono">${snap.ticks}</span></div>`;
+        <div class="stat"><span class="slabel">Lines executed</span><span class="sval mono">${snap.ticks}</span></div>${loopRow}`;
     }
 
     outEl.innerHTML = this.output.length

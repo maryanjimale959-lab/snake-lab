@@ -30,7 +30,7 @@ class LoopCapError(SnakeLabError):
 
 API_NAMES = [
     "move_snake", "set_direction", "place_food", "random_food",
-    "game_over", "__tick__", "GRID",
+    "game_over", "__tick__", "__loop_iter__", "GRID",
 ]
 
 DEFAULT_SNAKE = [[5, 5], [4, 5], [3, 5]]
@@ -70,6 +70,8 @@ def init_state(ctx):
     ctx["over_reason"] = ""
     ctx["_events"] = []
     ctx["_ticks"] = 0
+    ctx["_loops"] = {}
+    ctx["_inner"] = []
     ctx["_shown"] = [list(p) for p in DEFAULT_SNAKE]
     return ctx
 
@@ -109,13 +111,18 @@ def move_snake():
 
     food = G.get("food")
     grew = bool(food) and [nx, ny] == [int(food[0]), int(food[1])]
-    new_body = [[nx, ny]] + (body if grew else body[:-1])
+    # Preserve the item style the student used (tuples stay tuples):
+    src = list(raw)
+    head_cls = tuple if src and isinstance(src[0], tuple) else list
+    kept = src if grew else src[:-1]
+    new_body = [head_cls([nx, ny])] + kept
+    norm_new = _norm_body(new_body)
 
     G["_events"].append(
         {"type": "move", "from": [hx, hy], "to": [nx, ny], "grew": grew})
 
     hit_wall = nx < 0 or ny < 0 or nx >= GRID or ny >= GRID
-    hit_self = [nx, ny] in new_body[1:]
+    hit_self = [nx, ny] in norm_new[1:]
 
     if grew:
         G["score"] = int(G.get("score", 0)) + 1
@@ -126,7 +133,16 @@ def move_snake():
         raw[:] = new_body
     else:
         G["snake"] = new_body
-    G["_shown"] = [list(p) for p in G["snake"]]
+    G["_shown"] = norm_new
+
+    # Keep coordinate variables that are tracking the head in sync, so
+    # `while x < 8: move_snake()` terminates. Each variable is synced only
+    # when it currently equals the head's coordinate; unrelated x/y are
+    # left alone.
+    if type(G.get("x")) is int and G["x"] == hx:
+        G["x"] = nx
+    if type(G.get("y")) is int and G["y"] == hy:
+        G["y"] = ny
 
     if hit_wall or hit_self:
         G["game_over"] = True
@@ -231,6 +247,8 @@ def _payload(G, line):
         "gameOver": bool(G.get("game_over")),
         "reason": G.get("over_reason", ""),
         "events": list(G.get("_events", [])),
+        "loops": {str(k): v for k, v in G.get("_loops", {}).items()},
+        "inner": list(G.get("_inner", [])),
     })
 
 
@@ -252,6 +270,15 @@ async def __tick__(line):
     G["_events"] = []
     js = G.get("__js_tick")
     await js(payload)
+
+
+def __loop_iter__(line):
+    """Called at the top of every for/while body: counts real iterations."""
+    G = sys._getframe(1).f_globals
+    counts = G.setdefault("_loops", {})
+    k = int(counts.get(line, 0)) + 1
+    counts[line] = k
+    G["_inner"] = [line, k]
 
 
 # ---------------------------------------------------------------- instrumenter
@@ -276,6 +303,13 @@ def _mk_tick(lineno):
     return expr
 
 
+def _mk_loopmark(lineno):
+    expr = ast.parse("__loop_iter__(0)").body[0]
+    expr.value.args = [ast.Constant(value=int(lineno))]
+    _setpos(expr, lineno)
+    return expr
+
+
 class _Instr(ast.NodeTransformer):
     def __init__(self, func_names):
         self.func_names = func_names
@@ -286,6 +320,9 @@ class _Instr(ast.NodeTransformer):
             out.append(self.visit(stmt))
             out.append(_mk_tick(stmt.lineno))
         return out
+
+    def _loopmark(self, node):
+        return _mk_loopmark(node.lineno)
 
     def visit_Module(self, node):
         node.body = self._body(node.body)
@@ -305,14 +342,14 @@ class _Instr(ast.NodeTransformer):
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_For(self, node):
-        node.body = self._body(node.body)
+        node.body = [self._loopmark(node)] + self._body(node.body)
         node.orelse = self._body(node.orelse)
         return node
 
     visit_AsyncFor = visit_For
 
     def visit_While(self, node):
-        node.body = self._body(node.body)
+        node.body = [self._loopmark(node)] + self._body(node.body)
         node.orelse = self._body(node.orelse)
         return node
 

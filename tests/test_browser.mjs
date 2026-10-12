@@ -49,6 +49,43 @@ for i in range(5):
   const varsText = await page.textContent("#insp-vars");
   record("inspector shows variables", varsText.includes("direction") && varsText.includes("snake"), varsText.slice(0, 80));
 
+  // 3b. Brief section 10 examples, end-to-end in the real UI
+  await page.evaluate(() => {
+    window.snakeLab.setCode(`x = 5
+y = 5
+print(x)
+print(y)
+
+snake = [(5, 5), (4, 5), (3, 5)]
+print(len(snake))
+print(snake[0])
+
+direction = "right"
+set_direction(direction)
+move_snake()
+
+while x < 8:
+    move_snake()
+`);
+    window.snakeLab.run();
+  });
+  await waitForStatus("finished", 60000);
+  const outText = await page.evaluate(() =>
+    [...document.querySelectorAll("#insp-output pre")].map(p => p.textContent).join("\n"));
+  record("plain python prints 5/5/3/(5, 5)", outText.split("\n").slice(0, 4).join("|") === "5|5|3|(5, 5)", outText.replace(/\s+/g, " ").slice(0, 60));
+  const brief3 = await page.evaluate(() => ({
+    snake: window.snakeLab.grid.snake,
+    vars: window.snakeLab.inspector.lastSnap.vars,
+    loops: window.snakeLab.inspector.lastSnap.loops,
+  }));
+  record("while x < 8 synced and ended (x==8, no crash)", brief3.vars.x === "8" && JSON.stringify(brief3.snake[0]) === "[8,5]", JSON.stringify(brief3.snake));
+  // line 12's move_snake() already advanced x 5->6, so the while loop truly runs 2 iterations
+  record("loop iteration counter real", Object.values(brief3.loops || {}).includes(2), JSON.stringify(brief3.loops));
+  const stateTxt = await page.textContent("#insp-state");
+  record("inspector shows loop line + iteration", /iteration 2/.test(stateTxt), stateTxt.replace(/\s+/g, " ").slice(0, 90));
+  const bodyTxt = brief3.vars.snake;
+  record("student tuple body preserved", bodyTxt === "[(8, 5), (7, 5), (6, 5)]", String(bodyTxt));
+
   // 4. Challenge validates on state (lesson 3 exercise = 5 moves)
   await page.click("#tab-insp-lessons");
   await page.click('.lesson-card[data-lesson="forloops"]');
