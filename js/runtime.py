@@ -28,6 +28,12 @@ class LoopCapError(SnakeLabError):
     """Raised when the program runs more than LOOP_CAP statements."""
 
 
+def line_tag(n):
+    """Marks an instrument-time error with the student's line number; the
+    worker reads the tag back out so the editor can highlight that line."""
+    return "[L%d] " % int(n)
+
+
 API_NAMES = [
     "move_snake", "set_direction", "place_food", "random_food",
     "game_over", "__tick__", "__loop_iter__", "GRID",
@@ -341,6 +347,24 @@ class _Instr(ast.NodeTransformer):
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
+    def visit_ClassDef(self, node):
+        # Methods must stay synchronous: CPython calls __init__ (and any
+        # __dunder__) itself, so an async method would be returned to Python
+        # as an un-awaited coroutine. Their bodies run plainly instead, which
+        # means no per-statement sync inside a method.
+        for stmt in node.body:
+            if _has_unbounded_loop(stmt):
+                raise SnakeLabError(
+                    line_tag(getattr(stmt, "lineno", node.lineno)) +
+                    "A loop that never ends was found inside the method '"
+                    + getattr(stmt, "name", "?") + "' of a class. Methods run "
+                    "as ordinary Python here, so the Lab cannot step or pause "
+                    "them. Write endless game loops at the top level, where "
+                    "each statement is visible.")
+        node.body = [self.visit(d) if isinstance(d, ast.ClassDef) else d
+                     for d in node.body]
+        return node
+
     def visit_For(self, node):
         node.body = [self._loopmark(node)] + self._body(node.body)
         node.orelse = self._body(node.orelse)
@@ -381,13 +405,50 @@ class _Instr(ast.NodeTransformer):
         return node
 
 
+def _has_unbounded_loop(stmt):
+    """True when a statement's subtree contains a loop that can never yield
+    control back to the Lab (used for def bodies inside a class body)."""
+    for n in ast.walk(stmt):
+        if isinstance(n, ast.While):
+            test = n.test
+            if isinstance(test, ast.Constant) and test.value is True:
+                return True
+            if isinstance(test, ast.Tuple) and any(
+                    isinstance(k, ast.Constant) and k.value is True for k in test.elts):
+                return True
+        if isinstance(n, (ast.For, ast.AsyncFor)) and isinstance(n.iter, ast.Call):
+            f = n.iter.func
+            if isinstance(f, ast.Name) and f.id in ("cycle", "count"):
+                return True
+    return False
+
+
+def _collect_names(tree):
+    """Function names that become awaitable, i.e. every def except methods."""
+    names = set()
+
+    def walk(body):
+        for stmt in body:
+            if isinstance(stmt, ast.ClassDef):
+                continue  # methods stay synchronous
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                names.add(stmt.name)
+                walk(stmt.body)
+            elif isinstance(stmt, (ast.For, ast.AsyncFor, ast.While, ast.If,
+                                   ast.With, ast.AsyncWith, ast.Try)):
+                for part in (getattr(stmt, "body", []), getattr(stmt, "orelse", []),
+                             getattr(stmt, "finalbody", [])):
+                    walk(part)
+                for h in getattr(stmt, "handlers", []):
+                    walk(h.body)
+
+    walk(tree.body)
+    return names
+
+
 def instrument(code):
     tree = ast.parse(code)  # SyntaxError propagates with line info
-    names = set()
-    for n in ast.walk(tree):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            names.add(n.name)
-    _Instr(names).visit(tree)
+    _Instr(_collect_names(tree)).visit(tree)
     ast.fix_missing_locations(tree)
     return ast.unparse(tree)
 

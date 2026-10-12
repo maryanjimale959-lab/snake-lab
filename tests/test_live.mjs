@@ -24,6 +24,11 @@ async function run(code, want = "finished") {
   await page.evaluate((src) => { window.snakeLab.setCode(src); window.snakeLab.run(); }, code);
   await waitForStatus(want);
 }
+async function runWithError(code) {
+  await page.evaluate((src) => { window.snakeLab.setCode(src); window.snakeLab.run(); }, code);
+  await page.waitForSelector("#insp-error:not([hidden])", { timeout: 60000 });
+  return (await page.textContent("#insp-error")).replace(/\s+/g, " ");
+}
 const outputs = () => page.evaluate(() =>
   [...document.querySelectorAll("#insp-output pre")].map((p) => p.textContent).join("\n"));
 
@@ -113,6 +118,30 @@ while True:
   await page.waitForSelector("#insp-error:not([hidden])", { timeout: 30000 });
   const err = (await page.textContent("#insp-error")).replace(/\s+/g, " ");
   record("T7 SyntaxError points at line 2", /SyntaxError/.test(err) && /line 2/.test(err), err.slice(0, 90));
+
+  // Extra: real Python library + a class with synchronous methods
+  await run(`import math
+direction = "right"
+snake = [(5, 5), (4, 5), (3, 5)]
+
+class Bot:
+    def __init__(self, name):
+        self.name = name
+    def step(self):
+        move_snake()
+
+b = Bot("slide")
+print(math.sqrt(16))
+b.step()
+b.step()
+`);
+  const ex = await page.evaluate(() => ({
+    out: [...document.querySelectorAll("#insp-output pre")].map((x) => x.textContent).join(" "),
+    moves: window.snakeLab.events().filter((e) => e.type === "move").length,
+    head: window.snakeLab.grid.snake[0],
+  }));
+  record("import math works", ex.out.includes("4"), ex.out.slice(0, 30));
+  record("class methods drive real moves", ex.moves === 2 && JSON.stringify(ex.head) === "[7,5]", `${ex.moves} moves, head ${JSON.stringify(ex.head)}`);
 
   record("no uncaught page errors on live site", pageErrors.length === 0, pageErrors.slice(0, 1).join("").slice(0, 120));
 } catch (e) {

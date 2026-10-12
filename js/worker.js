@@ -71,7 +71,14 @@ async function run(code) {
     instrumented = pyodide.globals.get("instrument")(code);
   } catch (err) {
     mode = "idle";
-    post({ type: "syntaxerror", error: parsePyError(err) });
+    const perr = parsePyError(err);
+    // Errors the instrumenter raises carry the student's line as "[L7]".
+    const tag = String(perr.message || "").match(/\[L(\d+)\]\s*/);
+    if (tag) {
+      perr.line = Number(tag[1]);
+      perr.message = String(perr.message).replace(/\[L\d+\]\s*/, "");
+    }
+    post({ type: "syntaxerror", error: perr });
     return;
   }
 

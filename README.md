@@ -88,13 +88,16 @@ executions, and ending a loop is reported as finishing, never as a crash.
 
 ```bash
 # 1. Engine tests (plain CPython, no browser needed)
-python tests/test_runtime.py        # 14 checks
+python tests/test_runtime.py        # 22 checks
 
 # 2. Full browser tests (headless Chrome via playwright-core)
 npm install                         # installs playwright-core
 python -m http.server 8123 --bind 127.0.0.1 &   # serve the site
-node tests/test_browser.mjs         # 17 checks: run, loops, pause, step,
+node tests/test_browser.mjs         # 22 checks: run, loops, pause, step,
                                     # stop, errors, crashes, speed, recovery
+
+# 3. Same tests against the deployed GitHub Pages build
+node tests/test_live.mjs            # 13 checks, incl. the README's T1-T7 examples
 ```
 
 ## Project structure
@@ -113,11 +116,19 @@ js/lessons.js       lesson content, examples, state-based checks
 
 ## Honest limitations
 
-- The instrumenter teaches a **supported subset**: assignments, expressions,
+- The instrumenter steps **the teaching subset**: assignments, expressions,
   `if/elif/else`, `for`, `while`, `def`/calls (transformed to async), `try`,
-  `print`, list/tuple operations. `class` bodies, `import`, generators,
-  `lambda` containing calls, and `global`-heavy code are not step-instrumented
-  (they parse and error normally, but without line-level sync).
+  `with`, `print`, list/tuple/dict operations, f-strings, and `import` of
+  anything already inside Pyodide (the standard library — `math`, `random`,
+  `json`, ...). Student files, `pip install`, and the network are not
+  available.
+- `class` bodies run as **ordinary synchronous Python** (methods stay sync, so
+  `__init__` and other dunders behave the way CPython expects). Statements
+  inside a method therefore animate but are not stepped or paused individually.
+  A loop that can never end inside a method is refused with an explanation,
+  because nothing would hand control back to the Lab.
+- Generators (`yield`) and `global`-heavy code parse and run, but without
+  line-level sync.
 - A runaway program is capped at 20,000 executed statements, then stopped
   with an explanation (this keeps tabs and battery safe).
 - Python and Monaco load from public CDNs, so first visit needs internet.

@@ -12,13 +12,20 @@ import runtime as rt  # noqa: E402
 
 
 def run_program(code, expect_error=None):
-    src = rt.instrument(code)
+    G = rt.make_ctx()
+    try:
+        src = rt.instrument(code)
+    except BaseException as e:
+        if expect_error is None:
+            raise
+        assert isinstance(e, expect_error), f"{type(e).__name__} != {expect_error.__name__}"
+        return [], e
+
     steps = []
 
     async def js_tick(payload):
         steps.append(json.loads(payload))
 
-    G = rt.make_ctx()
     G["__js_tick"] = js_tick
     rt.init_state(G)
     codeobj = compile(src, "<exec>", "exec", ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
@@ -210,5 +217,53 @@ print("PASS 17: loop iterations tracked from real execution")
 steps, _ = run_program('x = 99\ndirection = "right"\nsnake = [(5, 5), (4, 5)]\nmove_snake()')
 assert steps[-1]["vars"]["x"] == "99"
 print("PASS 18: head-sync only touches x/y that track the head")
+
+# --- test 19: classes work (methods stay synchronous, __init__ is real Python)
+steps, _ = run_program('''
+direction = "right"
+snake = [(5, 5), (4, 5), (3, 5)]
+
+class Bot:
+    def __init__(self, name):
+        self.name = name
+    def greet(self):
+        return "hi " + self.name
+
+b = Bot("slide")
+greeting = b.greet()
+move_snake()
+''')
+assert steps[-1]["vars"]["greeting"] == "'hi slide'", steps[-1]["vars"]
+assert head(steps) == [6, 5]
+assert steps[-1]["gameOver"] is False
+print("PASS 19: class with __init__ and methods runs")
+
+# --- test 20: endless loop inside a method is refused with teaching text
+steps, err = run_program('''
+class Runner:
+    def go(self):
+        while True:
+            move_snake()
+
+r = Runner()
+''', expect_error=rt.SnakeLabError)
+assert "Methods run" in str(err) or "top level" in str(err), str(err)
+print("PASS 20: unbounded loop in a method explained, not hung")
+
+# --- test 21: the refusal names the student's line via the [L<n>] tag
+# (the def is physical line 3 of the program, counted from its real position)
+assert str(err).startswith("[L3]"), str(err)[:20]
+print("PASS 21: instrument-time error carries the student line tag")
+
+# --- test 22: nested classes are checked too
+_, err22 = run_program('''
+class Outer:
+    class Inner:
+        def go(self):
+            while True:
+                move_snake()
+''', expect_error=rt.SnakeLabError)
+assert "never ends" in str(err22), str(err22)
+print("PASS 22: endless loop in a nested class also refused")
 
 print("\nALL RUNTIME TESTS PASSED")
